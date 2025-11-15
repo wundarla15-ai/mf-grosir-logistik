@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Management</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .hidden { display: none; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        input, select { width: 100%; padding: 5px; }
+        button { padding: 5px 10px; margin: 5px; }
+        #chartContainer { width: 80%; margin: 20px auto; }
+        .search-section { margin-bottom: 20px; }
+        .search-results { margin-top: 20px; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Login Section -->
+    <div id="loginSection">
+        <h2>Login</h2>
+        <form id="loginForm">
+            <label for="password">Password:</label>
+            <input type="password" id="password" required>
+            <button type="submit">Login</button>
+        </form>
+    </div>
+
+    <!-- Main Section (Hidden until login) -->
+    <div id="mainSection" class="hidden">
+        <h1>Inventory Management</h1>
+        
+        <!-- Search Section -->
+        <div class="search-section">
+            <h3>Pencarian Berdasarkan Kode Baju</h3>
+            <input type="text" id="searchKodeBaju" placeholder="Masukkan Kode Baju">
+            <button id="searchBtn">Cari</button>
+            <div id="searchResults" class="search-results hidden">
+                <h4>Hasil Pencarian</h4>
+                <div id="masukResults"></div>
+                <div id="keluarResults"></div>
+            </div>
+        </div>
+        
+        <!-- Barang Masuk -->
+        <h2>Barang Masuk</h2>
+        <table id="barangMasukTable">
+            <thead>
+                <tr>
+                    <th>Tanggal Masuk</th>
+                    <th>Supplier</th>
+                    <th>Tanggal Nota</th>
+                    <th>Kode Nota</th>
+                    <th>Kode Baju</th>
+                    <th>Jenis Baju</th>
+                    <th>Quantity</th>
+                    <th>U/Price</th>
+                    <th>Amount</th>
+                    <th>Gambar</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Rows will be added dynamically -->
+            </tbody>
+        </table>
+        <button id="addRowMasuk">Tambah Baris</button>
+
+        <!-- Barang Keluar -->
+        <h2>Barang Keluar</h2>
+        <table id="barangKeluarTable">
+            <thead>
+                <tr>
+                    <th>Tanggal Nota</th>
+                    <th>Kode Nota</th>
+                    <th>Customer</th>
+                    <th>Kode Baju</th>
+                    <th>Jenis Baju</th>
+                    <th>Quantity</th>
+                    <th>U/Price</th>
+                    <th>Amount</th>
+                    <th>Gambar</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Rows will be added dynamically -->
+            </tbody>
+        </table>
+        <button id="addRowKeluar">Tambah Baris</button>
+
+        <!-- Diagram Siklus Harga -->
+        <h2>Diagram Siklus Harga Tiap Bulan</h2>
+        <div id="chartContainer">
+            <canvas id="priceChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Login Logic
+        const correctPassword = "admin"; // Ganti dengan password yang diinginkan
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const password = document.getElementById('password').value;
+            if (password === correctPassword) {
+                document.getElementById('loginSection').classList.add('hidden');
+                document.getElementById('mainSection').classList.remove('hidden');
+                loadData(); // Load data from localStorage on login
+            } else {
+                alert('Password salah!');
+            }
+        });
+
+        // Function to calculate amount
+        function calculateAmount(quantity, uPrice, amountField) {
+            const qty = parseFloat(quantity.value) || 0;
+            const price = parseFloat(uPrice.value) || 0;
+            amountField.value = (qty * price).toFixed(2);
+        }
+
+        // Function to create a new row for tables
+        function createRow(type) {
+            const row = document.createElement('tr');
+            if (type === 'masuk') {
+                row.innerHTML = `
+                    <td><input type="date" class="tanggalMasuk"></td>
+                    <td><input type="text" class="supplier"></td>
+                    <td><input type="date" class="tanggalNotaMasuk"></td>
+                    <td><input type="text" class="kodeNotaMasuk"></td>
+                    <td><input type="text" class="kodeBajuMasuk"></td>
+                    <td><input type="text" class="jenisBajuMasuk"></td>
+                    <td><input type="number" class="quantityMasuk" min="1"></td>
+                    <td><input type="number" class="uPriceMasuk" step="0.01" min="0"></td>
+                    <td><input type="number" class="amountMasuk" readonly></td>
+                    <td><input type="file" class="gambarMasuk" accept="image/*"></td>
+                    <td>
+                        <button class="editBtn">Edit</button>
+                        <button class="selesaiBtn">Selesai</button>
+                    </td>
+                `;
+            } else if (type === 'keluar') {
+                row.innerHTML = `
+                    <td><input type="date" class="tanggalNotaKeluar"></td>
+                    <td><input type="text" class="kodeNotaKeluar"></td>
+                    <td><input type="text" class="customer"></td>
+                    <td><input type="text" class="kodeBajuKeluar"></td>
+                    <td><input type="text" class="jenisBajuKeluar"></td>
+                    <td><input type="number" class="quantityKeluar" min="1"></td>
+                    <td><input type="number" class="uPriceKeluar" step="0.01" min="0"></td>
+                    <td><input type="number" class="amountKeluar" readonly></td>
+                    <td><input type="file" class="gambarKeluar" accept="image/*"></td>
+                    <td>
+                        <button class="editBtn">Edit</button>
+                        <button class="selesaiBtn">Selesai</button>
+                    </td>
+                `;
+            }
+            return row;
+        }
+
+        // Load data from localStorage
+        function loadData() {
+            const masukData = JSON.parse(localStorage.getItem('barangMasuk')) || [];
+            const keluarData = JSON.parse(localStorage.getItem('barangKeluar')) || [];
+            const masukTbody = document.querySelector('#barangMasukTable tbody');
+            const keluarTbody = document.querySelector('#barangKeluarTable tbody');
+            masukTbody.innerHTML = '';
+            keluarTbody.innerHTML = '';
+
+            masukData.forEach(data => {
+                const row = createRow('masuk');
+                populateRow(row, data, 'masuk');
+                masukTbody.appendChild(row);
+            });
+
+            keluarData.forEach(data => {
+                const row = createRow('keluar');
+                populateRow(row, data, 'keluar');
+                keluarTbody.appendChild(row);
+            });
+
+            // Add at least one empty row if no data
+            if (masukData.length === 0) masukTbody.appendChild(createRow('masuk'));
+            if (keluarData.length === 0) keluarTbody.appendChild(createRow('keluar'));
+        }
+
+        // Populate row with data
+        function populateRow(row, data, type) {
+            const inputs = row.querySelectorAll('input');
+            inputs.forEach(input => {
+                const className = input.className;
+                if (data[className]) {
+                    if (input.type === 'file') {
+                        // For images, we can't restore file input, but we can show a placeholder
+                        input.nextSibling = document.createTextNode('Gambar tersimpan');
+                    } else {
+                        input.value = data[className];
+                    }
+                }
+            });
+        }
+
+        // Save data to localStorage
+        function saveData(type) {
+            const tbody = document.querySelector(`#barang${type}Table tbody`);
+            const data = [];
+            tbody.querySelectorAll('tr').forEach(row => {
+                const rowData = {};
+                row.querySelectorAll('input').forEach(input => {
+                    if (input.type !== 'file') {
+                        rowData[input.className] = input.value;
+                    } else {
+                        // For simplicity, store filename or placeholder
+                        rowData[input.className] = input.files[0] ? input.files[0].name : '';
+                    }
+                });
+                if (Object.values(rowData).some(val => val !== '')) data.push(rowData);
+            });
+            localStorage.setItem(`barang${type}`, JSON.stringify(data));
+        }
+
+        // Event listeners for amount calculation
+        document.addEventListener('input', function(e) {
+            if (e.target.classList.contains('quantityMasuk') || e.target.classList.contains('uPriceMasuk')) {
+                const row = e.target.closest('tr');
+                const quantity = row.querySelector('.quantityMasuk');
+                const uPrice = row.querySelector('.uPriceMasuk');
+                const amount = row.querySelector('.amountMasuk');
+                calculateAmount(quantity, uPrice, amount);
+            } else if (e.target.classList.contains('quantityKeluar') || e.target.classList.contains('uPriceKeluar')) {
+                const row = e.target.closest('tr');
+                const quantity = row.querySelector('.quantityKeluar');
+                const uPrice = row.querySelector('.uPriceKeluar');
+                const amount = row.querySelector('.amountKeluar');
+                calculateAmount(quantity, uPrice, amount);
+            }
+        });
+
+        // Add Row for Barang Masuk
+        document.getElementById('addRowMasuk').addEventListener('click', function() {
+            const tbody = document.querySelector('#barangMasukTable tbody');
+            tbody.appendChild(createRow('masuk'));
+        });
+
+        // Add Row for Barang Keluar
+        document.getElementById('addRowKeluar').addEventListener('click', function() {
+            const tbody = document.querySelector('#barangKeluarTable tbody');
+            tbody.appendChild(createRow('keluar'));
+        });
+
+        // Edit and Selesai buttons
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('editBtn')) {
+                alert('Mode edit diaktifkan. Edit data dan klik Selesai.');
+                const row = e.target.closest('tr');
+                row.querySelectorAll('input').forEach(input => input.disabled = false);
+            } else if (e.target.classList.contains('selesaiBtn')) {
+                alert('Data disimpan.');
+                const row = e.target.closest('tr');
+                row.querySelectorAll('input').forEach(input => input.disabled = true);
+                // Save to localStorage
+                const type = row.closest('table').id.includes('Masuk') ? 'Masuk' : 'Keluar';
+                saveData(type);
+            }
+        });
+
+        // Search functionality
+        document.getElementById('searchBtn').addEventListener('click', function() {
+            const kodeBaju = document.getElementById('searchKodeBaju').value.trim();
+            if (!kodeBaju) {
+                alert('Masukkan Kode Baju untuk pencarian.');
+                return;
+            }
+            const masukData = JSON.parse(localStorage.getItem('barangMasuk')) || [];
+            const keluarData = JSON.parse(localStorage.getItem('barangKeluar')) || [];
+            const masukResults = masukData.filter(item => item.kodeBajuMasuk === kodeBaju);
+            const keluarResults = keluarData.filter(item => item.kodeBajuKeluar === kodeBaju);
+
+            const resultsDiv = document.getElementById('searchResults');
+            const masukDiv = document.getElementById('masukResults');
+            const keluarDiv = document.getElementById('keluarResults');
+            masukDiv.innerHTML = '<h5>Barang Masuk:</h5>' + (masukResults.length ? masukResults.map(item => `<p>${JSON.stringify(item)}</p>`).join('') : '<p>Tidak ada data.</p>');
+            keluarDiv.innerHTML = '<h5>Barang Keluar:</h5>' + (keluarResults.length ? keluarResults.map(item => `<p>${JSON.stringify(item)}</p>`).join('') : '<p>Tidak ada data.</p>');
+            resultsDiv.classList.remove('hidden');
+        });
+
+        // Chart.js for Price Cycle Diagram
+        const ctx = document.getElementById('priceChart').getContext('2d');
+        const priceChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                datasets: [{
+                    label: 'Harga Siklus (per Bulan)',
+                    data: [100, 120, 110, 130, 125, 140, 135, 150, 145, 160, 155, 170], // Dummy data
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
